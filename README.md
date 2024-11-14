@@ -27,42 +27,36 @@ Control the IoT device.
 - Payload:
 ```
 {
-    "command": "feed",
-    "duration": <integer>
+    "type": "action",
+    "action": "feed",
+    "settings": {
+        "duration": <integer>,
+    },
 }
 ```
-  ~ "command":
+  ~ "action":
     is required, is a command to be sent to the IoT device.
   
-  ~ "duration":
-    is optional, is for how long should the FishFeeder machine do the feeding in second time format (interval), default value is `10`.
+  ~ "settings.duration":
+    is optional, is for how long should the FishFeeder machine do the feeding in second time format (interval), default value is `5` seconds.
 
-Response:
+- Response:
 ```
 {
-    "command": "feed",
-    "status": "ongoing|stopped"
+    "type": "status_update",
+    "action": "feed",
+    "state": "ongoing|stopped"
 }
 ```
 
 ### Sensor Data
 Get the sensor data
-```
-Topic: fishfeeder/${DEVICE_ID}/sensor/data
-```
-- Topic: `fishfeeder/${DEVICE_ID}/sensor/data`
-- Payload:
+- Topic: `${DEVICE_ID}/sensor`
+- Response:
 ```
 {
     "ph": <float>,
-    "tds": <float>
-}
-```
-
-Response:
-```
-{
-    "ph": "<float>",
-    "tds": "<float>"
+    "tds": <float>,
+    "do": <float>,
 }
 ```

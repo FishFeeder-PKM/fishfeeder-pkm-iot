@@ -11,17 +11,17 @@ from dotenv import load_dotenv
 import os
 
 # Load environment variables from the .env file
-load_dotenv("../.env")
+load_dotenv(f"{os.path.dirname(os.path.abspath(__file__))}/../.env")
 
 SIGNALING_SERVER_URL = os.getenv("SIGNALING_SERVER_URL")
 DEVICE_ID = os.getenv("DEVICE_ID")
+ENABLE_LOGGING = bool(os.getenv("CONFIG_ENABLE_LOGGING"))
 
 # WebSocket client to connect to Node.js signaling server
 sio = socketio.AsyncClient()
 
 # Network state
 peer_connections = {} # Store peer connections
-peer_tracks = {} # store peer connection video tracks
 
 # Shared webcam state
 webcam = None
@@ -34,14 +34,14 @@ async def connect():
 
 @sio.event
 async def disconnect():
-    global peer_connections
+    # global peer_connections
     logger("Network", "Disconnected from signaling server!")
-    peer_connections.clear()
+    # peer_connections.clear()
     stop_webcam()
 
 # Function to start the webcam
 def start_webcam():
-    global video_track, webcam
+    global webcam
     # Initialize the webcam
     webcam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
@@ -52,45 +52,21 @@ def start_webcam():
     logger("Hardware", "Webcam turned on.")
 
 def start_video_stream(pc: RTCPeerConnection):
-    global peer_tracks
     # Start capturing video
-    sid = pc.sid
-    video_track = CameraCapturing()
-    logger("Network", f"Video stream turned on for sid '{sid}'")
+    logger("Network", f"Video stream turned on for sid '{pc.sid}'")
+    video_track = WebcamCapture()
     video_track.start()
-    peer_tracks[sid] = video_track
     pc.addTrack(video_track)
     return pc
 
 # Function to stop the webcam
 def stop_webcam():
     global webcam
-    if webcam.isOpened():
+    if bool(webcam) and webcam.isOpened():
         webcam.release()
-        logger("Hardware", "Webcam turned off")
-
-def stop_video_stream(pc: RTCPeerConnection):
-    global peer_connections
-
-    # Loop through all senders and find the one that is associated with the video track
-    sid = pc.sid
-    if sid not in peer_tracks:
-        return logger("Network", f"Track not found for sid '{sid}'", level="WARN")
-
-    for sender in pc.getSenders():
-        if sender.track == peer_tracks[sid]:
-            # Remove the sender (which removes the track from the peer connection)
-            pc.removeTrack(sender)
-            del peer_tracks[sid]
-            update_peer_connections(pc)
-            logger("Network", f"Video stream turned off for sid '{sid}'")
-            break
-    else:
-        logger("Network", f"Video stream not found for sid '{sid}'", level="WARN")
-        
+        logger("Hardware", "Webcam turned off")   
 
 def update_peer_connections(pc: RTCPeerConnection):
-    global peer_connections
     peer_connections[pc.sid] = pc
 
 # Handle ICE connection state change
@@ -135,16 +111,13 @@ async def check_ice_timeout(pc: RTCPeerConnection):
 
 # Closes peer connection
 async def close_peer_connection(pc: RTCPeerConnection, has_stream=True):
-    global peer_connections
+    global peer_connections, video_track
 
     sid = pc.sid
     if peer_connections[sid]:
         del peer_connections[sid]
     await pc.close()
     logger("Network", f"Peer connection closed for sid '{sid}'")
-
-    if has_stream:
-        stop_video_stream(pc)
 
     # Stop webcam if there is no active connections
     if not bool(peer_connections):
@@ -163,8 +136,7 @@ async def handle_offer(offer, sid):
     pc.is_completed = False
 
     # Set up ICE connection state change listener
-    pc.on("iceconnectionstatechange", lambda: asyncio.create_task(on_ice_connection_state_change(pc)),
-    )
+    pc.on("iceconnectionstatechange", lambda: asyncio.create_task(on_ice_connection_state_change(pc)))
 
     try:
         # Only open the webcam if there is atleast an active connection
@@ -253,7 +225,7 @@ async def handle_candidate(candidate, sid):
         logger("Network", f"No active peer connection for SID: {sid}.", level="ERROR")
 
 # Camera Capturing class
-class CameraCapturing(VideoStreamTrack):
+class WebcamCapture(VideoStreamTrack):
     """
     A custom video stream track for capturing the user's screen.
     """
@@ -299,13 +271,15 @@ class CameraCapturing(VideoStreamTrack):
         """
         Start the camera capture in a separate thread.
         """
+        self.is_started = True
         logger("Hardware", "Video track started!")
         capture_thread = threading.Thread(target=self.capture_frame, daemon=True)
         capture_thread.start()
 
 def logger(category, message, level="INFO"):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [{level}]: {category}: {message}")
+    if ENABLE_LOGGING:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] [{level}]: {category}: {message}")
 
 # Set up connection and stream
 async def run():
@@ -318,7 +292,7 @@ async def run():
         await sio.wait()
 
     except Exception as e:
-        logger("Network", f"Error connecting to server: {e}", level=ERROR)
+        logger("Network", f"Error connecting to server: {e}", level="ERROR")
 
 if __name__ == "__main__":
     asyncio.run(run())

@@ -8,12 +8,11 @@ from datetime import datetime, timedelta
 import pytz
 
 # Load environment variables from the .env file
-load_dotenv("../.env")
+load_dotenv(f"{os.path.dirname(os.path.abspath(__file__))}/../.env")
 
 # MQTT Configuration
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT"))
-MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID")
 MQTT_QOS = int(os.getenv("MQTT_QOS"))
 DEVICE_ID = os.getenv("DEVICE_ID")
 
@@ -23,7 +22,7 @@ STATUS_TOPIC = f"{DEVICE_ID}/status"
 CONTROL_TOPIC = f"{DEVICE_ID}/control"
 
 # Define the timezone UTC+7 (Bangkok Time)
-tz = pytz.timezone("Asia/Bangkok")
+tz = pytz.timezone(os.getenv("CONFIG_TIMEZONE"))
 
 # Convert time strings to datetime objects in UTC+7
 def parse_time(time_str):
@@ -31,11 +30,11 @@ def parse_time(time_str):
 
 # Feeder configuration (default immutable values)
 config_immutable = {
-    is_auto_feed: os.getenv("CONFIG_IS_AUTO_FEED") == 'true', # automatically feeds or not
-    auto_feed_start: parse_time(os.getenv("CONFIG_AUTO_FEED_START")), # time UTC+7, when the feedings can occur
-    auto_feed_end: parse_time(os.getenv("CONFIG_AUTO_FEED_END")), # time UTC+7, when the feedings must stop
-    auto_feed_interval: int(os.getenv("CONFIG_AUTO_FEED_INTERVAL")), # hours
-    feed_duration: int(os.getenv("CONFIG_FEED_DURATION")), # seconds to open feeder valve
+    is_auto_feed: True, # automatically feeds or not
+    auto_feed_start: parse_time("08:00"), # time UTC+7, when the feedings can occur
+    auto_feed_end: parse_time("20:00"), # time UTC+7, when the feedings must stop
+    auto_feed_interval: 4, # hours
+    feed_duration: 5, # seconds to open feeder valve
 }
 
 # Copy the immutable config into mutable ones (on runtiem)
@@ -112,7 +111,7 @@ def auto_feed():
 
 
 # Create a new MQTT client and specify the callback API version
-client = mqtt.Client(MQTT_CLIENT_ID)
+client = mqtt.Client(DEVICE_ID)
 
 # Client configs
 client.keep_alive_interval = 30  # Set to 30 seconds or less
@@ -144,6 +143,7 @@ try:
         sensor_data = {
             "ph": round(random.uniform(20.0, 30.0), 2),
             "tds": round(random.uniform(30.0, 60.0), 2),
+            "do": round(random.uniform(30.0, 60.0), 2),
         }
 
         # Publish data to different topics
