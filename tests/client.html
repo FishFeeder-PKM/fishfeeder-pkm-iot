@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Video Stream</title>
+  <style>
+    video {
+      width: 100%;
+      /* width: 640px; */
+      height: auto;
+      /* height: 480px; */
+      border: 2px solid red;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Video Stream</h1>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <button id="playButton">Play Video</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const SIGNALING_SERVER_URL = 'http://192.168.1.7:3001';
+      const socket = io(SIGNALING_SERVER_URL, { transports: ['websocket'] });
+      const roomId = 'iot-device-id';
+      const peerConnection = new RTCPeerConnection();
+      const remoteVideo = document.getElementById('remoteVideo');
+      const playButton = document.getElementById('playButton');
+  
+      socket.on('connect', () => {
+          console.log('Connected to signaling server');
+  
+          // Join the room corresponding to the Python client's device ID
+          socket.emit('join-room', { roomId });
+  
+          // After connection, initiate an offer to start the WebRTC process
+          // Generate an offer after connection to signaling server
+          createOffer();
+      });
+  
+      // Function to create the offer
+      async function createOffer() {
+        // Create an offer
+        const offerOptions = {
+          offerToReceiveVideo: 1,  // Request to receive video
+          offerToReceiveAudio: 0,   // Do not request audio
+        }
+        const offer = await peerConnection.createOffer(offerOptions);
+        await peerConnection.setLocalDescription(offer);
+  
+        // Send the offer to the server
+        socket.emit('offer', {
+          roomId,
+          sdp: peerConnection.localDescription.sdp,
+          type: peerConnection.localDescription.type
+        });
+  
+        console.log("Offer sent to signaling server:", offer);
+      }
+  
+      // ICE Candidate Gathering
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('candidate', {
+            roomId,
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          });
+        }
+      };
+  
+      socket.on('answer', async (answer) => {
+        console.log('Received answer from server:', answer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        
+        // Now check if the remote description has been set
+        if (peerConnection.remoteDescription) {
+          // console.log("Remote description set: ", peerConnection.remoteDescription.sdp);
+          console.log("Remote description set.");
+        } else {
+          console.log("Remote description is not set yet.");
+        }
+      });
+  
+      socket.on('candidate', (candidate) => {
+        console.log('YOU A CANDIDATE')
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+  
+      // Handle the incoming video track from the server
+      peerConnection.ontrack = (event) => {
+        const remoteStream = event.streams[0];
+        if (remoteStream) {
+          remoteVideo.srcObject = remoteStream;
+          console.log("Remote stream attached to video element.");
+
+          playVideo();
+        }
+      };
+  
+      // When the peer connection needs to renegotiate (e.g., new track added)
+      peerConnection.onnegotiationneeded = async () => {
+        try {
+          console.log("Renegotiation needed, creating offer...");
+          createOffer();
+        } catch (err) {
+          console.error("Error during renegotiation:", err);
+        }
+      };
+  
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log("ICE connection state:", peerConnection.iceConnectionState);
+
+        // if (peerConnection.iceConnectionState === 'disconnected') {
+        //   // If disconnect, attempt to reconnect every 5 seconds
+        // }
+      };
+
+      const playVideo = () => {
+        remoteVideo.play().then(() => {
+          console.log('Video started playing.');
+        }).catch(err => {
+          console.error('Failed to start video playback:', err);
+        });
+      };
+
+      // Play video when the play button is clicked
+      playButton.addEventListener('click', playVideo);
+    });
+  </script>
+</body>
+</html>

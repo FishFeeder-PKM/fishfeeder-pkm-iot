@@ -1,0 +1,7 @@
+python-dotenv
+python-socketio
+aiortc
+opencv-python
+paho-mqtt
+pytz
+aiohttp
