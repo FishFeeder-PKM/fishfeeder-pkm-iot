@@ -30,11 +30,11 @@ def parse_time(time_str):
 
 # Feeder configuration (default immutable values)
 config_immutable = {
-    is_auto_feed: True, # automatically feeds or not
-    auto_feed_start: parse_time("08:00"), # time UTC+7, when the feedings can occur
-    auto_feed_end: parse_time("20:00"), # time UTC+7, when the feedings must stop
-    auto_feed_interval: 4, # hours
-    feed_duration: 5, # seconds to open feeder valve
+    "is_auto_feed": False, # automatically feeds or not
+    "auto_feed_start": parse_time("08:00"), # time UTC+7, when the feedings can occur
+    "auto_feed_end": parse_time("20:00"), # time UTC+7, when the feedings must stop
+    "auto_feed_interval": 4, # hours
+    "feed_duration": 5, # seconds to open feeder valve
 }
 
 # Copy the immutable config into mutable ones (on runtiem)
@@ -47,6 +47,10 @@ def on_connect(client, userdata, flags, rc):
     print(f"Connected to MQTT Broker with result code {rc}")
     # Subscribe to control topics (feed control)
     client.subscribe(CONTROL_TOPIC)
+    # Should send heartbeat request to server for continuos acknowledgement
+    # TODO: Should listen to the WS server just so if the connection to it
+    #       is lost, then reconnect and resend global message.
+    client.publish("global", json.dumps({ "device_id": DEVICE_ID }))
     print(f"Subscribed to control topics: {CONTROL_TOPIC}")
 
     client.publish(STATUS_TOPIC, json.dumps({ "is_online": True }), qos=1)
@@ -68,17 +72,17 @@ def on_message(client, userdata, msg):
         if message_type == "action":
             action = data.get("action")
             settings = data.get("settings", None)
-            if action == "feed" and config.is_auto_feed == False:
-                duration = settings["duration"] if settings is not None else config.feed_duration
+            if action == "feed" and config["is_auto_feed"] == False:
+                duration = settings["duration"] if settings is not None else config["feed_duration"]
                 manual_feed(duration)
             
             if action == "config":
-                config.is_auto_feed = settings["is_auto_feed"] if settings is not None else config.is_auto_feed
+                config["is_auto_feed"] = settings["is_auto_feed"] if settings is not None else config["is_auto_feed"]
 
                 if is_auto_feed:
-                    config.auto_feed_start = settings["is_auto_feed"] if settings is not None else config.auto_feed_start
-                    config.auto_feed_end = settings["is_auto_feed"] if settings is not None else config.auto_feed_end
-                    config.auto_feed_interval = settings["is_auto_feed"] if settings is not None else config.auto_feed_interval
+                    config["auto_feed_start"] = settings["is_auto_feed"] if settings is not None else config["auto_feed_start"]
+                    config["auto_feed_end"] = settings["is_auto_feed"] if settings is not None else config["auto_feed_end"]
+                    config["auto_feed_interval"] = settings["is_auto_feed"] if settings is not None else config["auto_feed_interval"]
 
 # Example function to simulate feeding action
 def manual_feed(duration):
